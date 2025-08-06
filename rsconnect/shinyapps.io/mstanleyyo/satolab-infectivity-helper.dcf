@@ -1,0 +1,12 @@
+name: satolab-infectivity-helper
+title: satolab-infectivity-helper
+username: mstanleyyo
+account: mstanleyyo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15168271
+bundleId: 10733805
+url: https://mstanleyyo.shinyapps.io/satolab-infectivity-helper/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

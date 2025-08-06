@@ -38,6 +38,7 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
              h4("Dilution settings"),
              numericInput("target_volume_uL", "Target volume (uL)", value = 200),
              numericInput("target_p24_ng_mL", "Target p24 (ng/mL)", value = 400),
+             br(), br(), br(),
              
              actionButton("remove_all_samples", "Remove All Samples")
              
@@ -57,8 +58,11 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     tabPanel("About",
              mainPanel(
                h3("About this website"),
-               h5("Written in R shiny by Maximilian Stanley Yo."),
-               h5("Follow development here: ")
+               p("Written in R Shiny by Maximilian Stanley Yo."),
+               p(
+                 "Follow development here: ",
+                 tags$a("GitHub Repository", href = "https://github.com/mstanley-yo/satolab-infectivity-helper", target = "_blank")
+               )
              )
     ) # Navbar, tabPanel4
     
@@ -182,7 +186,7 @@ server <- function(input, output) {
     
     # Build flextable
     ft <- flextable(df_display) %>%
-      autofit() %>%
+      autofit(add_w = 100) %>%
       add_footer_lines(
         values = as_paragraph(
           paste0("Dilute each sample up to ", total_volume, " uL to reach ",
