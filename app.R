@@ -134,7 +134,7 @@ server <- function(input, output) {
       sample_id = input$sample_id_input,
       rlu = input$rlu_input,
       p24_concentration_ng_mL = p24_conc,
-      volume_to_dilute = round(vol_to_dilute, 1),
+      volume_to_dilute = vol_to_dilute,
       stringsAsFactors = FALSE
     )
     
