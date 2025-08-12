@@ -32,6 +32,7 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
              sidebarPanel(
              textInput("sample_id_input", "Sample ID", value = "sample"),
              numericInput("rlu_input", "RLU", value = 1.37E+06, min = 0),
+             numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
              actionButton("add_sample", "Add Sample"),
              br(), br(), br(),
              
@@ -127,7 +128,7 @@ server <- function(input, output) {
   observeEvent(input$add_sample, {
     current <- sample_data()
     
-    p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * 4
+    p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * input$pre_hibit_input
     vol_to_dilute = input$target_volume_uL * input$target_p24_ng_mL / p24_conc
     
     new_row <- data.frame(
