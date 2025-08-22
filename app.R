@@ -12,12 +12,12 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     tabPanel("Standard curve",
              sidebarPanel(
                tags$h4("RLU of serially diluted standard:"),
-               textInput("std1", "1141.1 ng/mL (stock):", "4.82E+06"),
-               textInput("std2", "570.6 ng/mL:", "3.05E+06"),
-               textInput("std3", "285.3 ng/mL:", "1.79E+06"),
-               textInput("std4", "142.6 ng/mL:", "1.03E+06"),
-               textInput("std5", "71.3 ng/mL:", "5.56E+05"),
-               textInput("std6", "0 ng/mL:", "3.00E+01"),
+               textInput("std1", "1141.1 ng/mL (stock):"),
+               textInput("std2", "570.6 ng/mL:"),
+               textInput("std3", "285.3 ng/mL:"),
+               textInput("std4", "142.6 ng/mL:"),
+               textInput("std5", "71.3 ng/mL:"),
+               textInput("std6", "0 ng/mL:"),
                
              ), # sidebarPanel
              mainPanel(
@@ -30,14 +30,14 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     ), # Navbar 1, tabPanel
     tabPanel("HiBiT normalization",
              sidebarPanel(
-             textInput("sample_id_input", "Sample ID", value = "sample"),
-             numericInput("rlu_input", "RLU", value = 1.37E+06, min = 0),
+             textInput("sample_id_input", "Sample ID", value = ""),
+             numericInput("rlu_input", "RLU", value = "", min = 0),
              numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
              actionButton("add_sample", "Add Sample"),
              br(), br(), br(),
              
              h4("Dilution settings"),
-             numericInput("target_volume_uL", "Target volume (uL)", value = 200),
+             numericInput("target_volume_uL", "Target volume (uL)", value = 300),
              numericInput("target_p24_ng_mL", "Target p24 (ng/mL)", value = 400),
              br(), br(), br(),
              
@@ -79,7 +79,7 @@ server <- function(input, output) {
     
   # --- Standard curve plot ---
   output$rlu_plot <- renderPlot({
-
+    
     # Extract numeric RLU values from inputs
     rlus <- as.numeric(c(input$std1, input$std2, input$std3, 
                          input$std4, input$std5, input$std6))
@@ -105,7 +105,7 @@ server <- function(input, output) {
     eq <- paste0("y = ", round(coeffs$slope, 6), "x + ", round(coeffs$intercept, 3))
     r2_label <- paste0("R² = ", round(coeffs$r2, 3))
     
-    # Create ggplot
+    # ggplot
     ggplot(df, aes(x = RLU, y = Concentration)) +
       geom_point(size = 3, color = "blue") +
       geom_smooth(method = "lm", se = FALSE, color = "grey", linetype = "dashed") +
@@ -116,6 +116,7 @@ server <- function(input, output) {
         subtitle = paste(eq, "   ", r2_label)
       ) +
       theme_prism()
+    
   }) #renderPlot
   
   # --- Dynamic sample table ---
@@ -126,6 +127,7 @@ server <- function(input, output) {
                                         stringsAsFactors = FALSE))
   
   observeEvent(input$add_sample, {
+
     current <- sample_data()
     
     p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * input$pre_hibit_input
