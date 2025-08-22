@@ -5,7 +5,7 @@ account: mstanleyyo
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15168271
-bundleId: 10804968
+bundleId: 10805271
 url: https://mstanleyyo.shinyapps.io/satolab-infectivity-helper/
 version: 1
 asMultiple: FALSE

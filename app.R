@@ -12,12 +12,12 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     tabPanel("Standard curve",
              sidebarPanel(
                tags$h4("RLU of serially diluted standard:"),
-               textInput("std1", "1141.1 ng/mL (stock):"),
-               textInput("std2", "570.6 ng/mL:"),
-               textInput("std3", "285.3 ng/mL:"),
-               textInput("std4", "142.6 ng/mL:"),
-               textInput("std5", "71.3 ng/mL:"),
-               textInput("std6", "0 ng/mL:"),
+               numericInput("std1", "1141.1 ng/mL (stock):", value = NA, min = 0),
+               numericInput("std2", "570.6 ng/mL:", value = NA, min = 0),
+               numericInput("std3", "285.3 ng/mL:", value = NA, min = 0),
+               numericInput("std4", "142.6 ng/mL:", value = NA, min = 0),
+               numericInput("std5", "71.3 ng/mL:", value = NA, min = 0),
+               numericInput("std6", "0 ng/mL:", value = NA, min = 0)
                
              ), # sidebarPanel
              mainPanel(
@@ -31,7 +31,7 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     tabPanel("HiBiT normalization",
              sidebarPanel(
              textInput("sample_id_input", "Sample ID", value = ""),
-             numericInput("rlu_input", "RLU", value = "", min = 0),
+             numericInput("rlu_input", "RLU", value = NA, min = 0),
              numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
              actionButton("add_sample", "Add Sample"),
              br(), br(), br(),
@@ -80,6 +80,15 @@ server <- function(input, output) {
   # --- Standard curve plot ---
   output$rlu_plot <- renderPlot({
     
+    # validate that there is at least one RLU value entered
+    validate(
+      need(
+        any(c(input$std1, input$std2, input$std3, 
+              input$std4, input$std5, input$std6) != ""),
+        'Please input luminescence (RLU) values!'
+      )
+    )
+
     # Extract numeric RLU values from inputs
     rlus <- as.numeric(c(input$std1, input$std2, input$std3, 
                          input$std4, input$std5, input$std6))
@@ -127,7 +136,10 @@ server <- function(input, output) {
                                         stringsAsFactors = FALSE))
   
   observeEvent(input$add_sample, {
-
+    
+    # validate that there is a standard curve. 
+    validate(need(coeffs$slope != "" | coeffs$intercept != "", "Please set up the standard curve!"))
+    
     current <- sample_data()
     
     p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * input$pre_hibit_input
@@ -155,6 +167,11 @@ server <- function(input, output) {
   }) # observeEvent - remove_all_samples
   
   output$sample_table <- renderTable({
+    
+    # validate that there is a standard curve. 
+    validate(need(coeffs$slope != "" | coeffs$intercept != "", "Please set up the standard curve!"))
+    
+    # rename column headers and render table
     sample_data() %>%
       rename(
         ID = sample_id,
@@ -165,7 +182,11 @@ server <- function(input, output) {
   }) # renderTable
   
   output$pretty_output <- renderUI({
-    req(nrow(sample_data()) > 0)  # only show when table is not empty
+    
+    # validate that there is a standard curve. 
+    validate(need(coeffs$slope != "" | coeffs$intercept != "", "Please set up the standard curve!"))
+    
+    #req(nrow(sample_data()) > 0)  # only show when table is not empty
     
     # Extract input values
     total_volume <- input$target_volume_uL
