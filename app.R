@@ -52,7 +52,8 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     ), # Navbar, tabPanel2
     tabPanel("Pretty output",
              mainPanel(
-             uiOutput("pretty_output")
+             uiOutput("pretty_output"),
+             downloadButton("download_docx", "Download table as .docx")
              )
     ), # Navbar, tabPanel3
     
@@ -99,7 +100,7 @@ server <- function(input, output) {
     # Build data frame
     df <- data.frame(
       RLU = rlus,
-      Concentration = concentrations) %>%
+      Concentration = concentrations) |>
       drop_na()
     
     # Fit linear model: Concentration as a function of RLU
@@ -172,7 +173,7 @@ server <- function(input, output) {
     validate(need(coeffs$slope != "" | coeffs$intercept != "", "Please set up the standard curve!"))
     
     # rename column headers and render table
-    sample_data() %>%
+    sample_data() |>
       rename(
         ID = sample_id,
         `Measured RLU` = rlu,
@@ -196,11 +197,11 @@ server <- function(input, output) {
     df <- sample_data()
     
     # Optional: round numeric columns for display
-    df_display <- df %>%
+    df_display <- df |>
       mutate(
         p24_concentration_ng_mL = round(p24_concentration_ng_mL, 2),
         volume_to_dilute = round(volume_to_dilute, 1)
-      ) %>%
+      ) |>
       rename(
         `Sample ID` = sample_id,
         `RLU` = rlu,
@@ -209,18 +210,19 @@ server <- function(input, output) {
       )
     
     # Build flextable
-    ft <- flextable(df_display) %>%
-      autofit(add_w = 100) %>%
+    ft <- flextable(df_display) |>
+      autofit(add_w = 100) |>
       add_footer_lines(
         values = as_paragraph(
           paste0("Dilute each sample up to ", total_volume, " uL to reach ",
                  target_p24, " ng/mL p24 concentration.")
         )
-      ) %>%
-      align(j = c("p24 (ng/mL)", "volume (uL)"), align = "left", part = "all") %>%
-      bold(bold = TRUE, part = "header") %>%
-      bold(j = "volume (uL)", bold = TRUE, part = "body") %>%
-      color(j = "volume (uL)", color = "red", part = "body")
+      ) |>
+      align(j = c("p24 (ng/mL)", "volume (uL)"), align = "left", part = "all") |>
+      bold(bold = TRUE, part = "header") |>
+      bold(j = "volume (uL)", bold = TRUE, part = "body") |>
+      color(j = "volume (uL)", color = "red", part = "body") |>
+      fontsize(size = 14, part = "all") 
     
     # Render as HTML widget
     tagList(
@@ -228,6 +230,50 @@ server <- function(input, output) {
       flextable::htmltools_value(ft)
     )
   })
+  
+  # Make downloadable
+  output$download_docx <- downloadHandler(
+    filename = function() {
+      paste0("dilution_table_", Sys.Date(), ".docx")
+    },
+    content = function(file) {
+      # --- Rebuild the table just like in renderUI ---
+      total_volume <- input$target_volume_uL
+      target_p24 <- input$target_p24_ng_mL
+      df <- sample_data()
+      
+      df_display <- df |>
+        mutate(
+          p24_concentration_ng_mL = round(p24_concentration_ng_mL, 2),
+          volume_to_dilute = round(volume_to_dilute, 1)
+        ) |>
+        rename(
+          `Sample ID` = sample_id,
+          `RLU` = rlu,
+          `p24 (ng/mL)` = p24_concentration_ng_mL,
+          `volume (uL)` = volume_to_dilute
+        )
+      
+      ft <- flextable(df_display) |>
+        add_header_lines(
+          values = paste0("Pseudovirus infectivity assay (", Sys.Date(), ") dilution table")
+        ) |>
+        add_footer_lines(
+          values = paste0("Dilute each sample up to ", total_volume, " uL to reach ",
+                          target_p24, " ng/mL p24 concentration.")
+        ) |>
+        align(j = c("p24 (ng/mL)", "volume (uL)"), align = "left", part = "all") |>
+        bold(bold = TRUE, part = "header") |>
+        bold(j = "volume (uL)", bold = TRUE, part = "body") |>
+        color(j = "volume (uL)", color = "red", part = "body") |>
+        fontsize(size = 14, part = "all") |>
+        autofit() %>%
+        width(width = dim(.)$widths*8 /(flextable_dim(.)$widths))
+      
+      # --- Save as docx ---
+      flextable::save_as_docx(ft, path = file)
+    }
+  )
   
 } #server
 
