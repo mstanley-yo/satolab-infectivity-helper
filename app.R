@@ -35,13 +35,13 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
              textInput("sample_id_input", "Sample ID", value = ""), #test: GD/1/2019
              numericInput("rlu_input", "RLU", value = NA, min = 0), #test 1.37E+06
              numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
-             actionButton("add_sample", "Add Sample"),
+             actionButton("add_sample", "Add Sample", icon = icon("plus")),
              br(), br(), br(),
              
              h4("Dilution settings"),
              numericInput("target_volume_uL", "Target volume (uL)", value = 300),
              numericInput("target_p24_ng_mL", "Target p24 (ng/mL)", value = 400),
-             actionButton("remove_all_samples", "Remove All Samples")
+             actionButton("remove_all_samples", "Remove All Samples", icon = icon("trash"))
              
              ), # sidebarPanel
              mainPanel(
