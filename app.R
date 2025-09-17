@@ -1,5 +1,6 @@
 # Load R packages
 library(shiny)
+library(bslib) # for column_layout
 library(shinythemes)
 library(dplyr)   # for mutate(), rename()
 library(tidyr)   # for drop_na()
@@ -32,15 +33,28 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
     ), # Navbar 1, tabPanel
     tabPanel("HiBiT normalization",
              sidebarPanel(
-             textInput("sample_id_input", "Sample ID", value = ""), #test: GD/1/2019
-             numericInput("rlu_input", "RLU", value = NA, min = 0), #test 1.37E+06
-             numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
+             h4("Manual input"),
+             layout_columns(
+               textInput("sample_id_input", "Sample ID", value = ""), #test: GD/1/2019
+               numericInput("rlu_input", "RLU", value = NA, min = 0), #test 1.37E+06
+             ),
              actionButton("add_sample", "Add Sample", icon = icon("plus")),
-             br(), br(), br(),
+             br(), br(),
+             
+             h4("Input from Excel"),
+             textInput("excel_input", "Copy and paste from Excel",
+                       value = ""), #test: virus1	2.57E+04 virus2	2.92E+04
+             p("Ensure there are no white spaces in the virus names."),
+             p("For example: 'virus1	2.57E+04 virus2	2.92E+04'."),
+             actionButton("add_sample_excel", "Add Sample from Excel", icon = icon("file-excel")),
+             br(), br(),
              
              h4("Dilution settings"),
-             numericInput("target_volume_uL", "Target volume (uL)", value = 300),
-             numericInput("target_p24_ng_mL", "Target p24 (ng/mL)", value = 400),
+             numericInput("pre_hibit_input", "Dilution before HiBiT assay (times)", value = 4, min = 0),
+             layout_columns(
+              numericInput("target_volume_uL", "Target volume (uL)", value = 300),
+              numericInput("target_p24_ng_mL", "Target p24 (ng/mL)", value = 400),
+             ),
              actionButton("remove_all_samples", "Remove All Samples", icon = icon("trash"))
              
              ), # sidebarPanel
@@ -106,6 +120,7 @@ server <- function(input, output) {
       eq <- paste0("y = ", round(coeffs$slope, 6), "x + ", round(coeffs$intercept, 3))
       r2_label <- paste0("R² = ", round(coeffs$r2, 3))
       
+      # draw ggplot
       ggplot(df, aes(x = RLU, y = Concentration)) +
         geom_point(size = 3, color = "blue") +
         geom_smooth(method = "lm", se = FALSE, color = "grey", linetype = "dashed") +
@@ -142,16 +157,16 @@ server <- function(input, output) {
                                         volume_to_dilute = numeric(),
                                         stringsAsFactors = FALSE))
   
+  # add sample
   observeEvent(input$add_sample, {
     
     # validate that there is a standard curve. 
-    validate(need(coeffs$slope != "" | coeffs$intercept != "", "Please set up the standard curve!"))
+    validate(need(coeffs$slope != "" | coeffs$intercept != "", 
+                  "Please set up the standard curve!"))
     
-    current <- sample_data()
-    
+    # Calculate p24 concentration & volumes
     p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * input$pre_hibit_input
     vol_to_dilute = input$target_volume_uL * input$target_p24_ng_mL / p24_conc
-    
     new_row <- data.frame(
       sample_id = input$sample_id_input,
       rlu = input$rlu_input,
@@ -160,9 +175,44 @@ server <- function(input, output) {
       stringsAsFactors = FALSE
     )
     
+    # Bind to current sample_data
+    current <- sample_data()
     sample_data(rbind(current, new_row))
+    
   }) # observeEvent - add_sample
   
+  # add sample from excel
+  observeEvent(input$add_sample_excel, {
+    
+    # validate that there is a standard curve  
+    validate(need(coeffs$slope != "" & coeffs$intercept != "", 
+                  "Please set up the standard curve!"))
+    
+    # Parse excel-style input
+    excel_input <- gsub(" ([^ \t]+)\t", "\n\\1\t", input$excel_input)
+    df_in <- read.table(text = excel_input, 
+                        header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+    names(df_in) <- c("sample_id", "rlu")
+    
+    # Calculate p24 concentration & volumes vectorised
+    p24_conc <- (coeffs$slope * df_in$rlu + coeffs$intercept) * input$pre_hibit_input
+    vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / p24_conc
+    
+    new_rows <- data.frame(
+      sample_id = df_in$sample_id,
+      rlu = df_in$rlu,
+      p24_concentration_ng_mL = p24_conc,
+      volume_to_dilute = vol_to_dilute,
+      stringsAsFactors = FALSE
+    )
+    
+    # Bind to current sample_data
+    current <- sample_data()
+    sample_data(rbind(current, new_rows))
+    
+  }) # observeEvent - add_sample_excel
+
+  # remove all samples
   observeEvent(input$remove_all_samples, {
     sample_data(data.frame(
       sample_id = character(),
