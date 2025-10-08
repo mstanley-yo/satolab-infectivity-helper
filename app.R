@@ -245,6 +245,8 @@ server <- function(input, output) {
                     input$pre_hibit_input
         vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
                          p24_conc
+        
+        # Create new row
         new_row <- data.frame(
             sample_id = input$sample_id_input,
             rlu = input$rlu_input,
@@ -276,7 +278,8 @@ server <- function(input, output) {
                     input$pre_hibit_input
         vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
                          p24_conc
-
+        
+        # Create new rows
         new_rows <- data.frame(
             sample_id = df_in$sample_id,
             rlu = df_in$rlu,
@@ -288,7 +291,7 @@ server <- function(input, output) {
         # Bind to current sample_data
         current <- sample_data()
         sample_data(rbind(current, new_rows))
-    }) # observeEvent - add_sample_excel
+    })
 
     # remove all samples
     observeEvent(input$remove_all_samples, {
@@ -299,7 +302,7 @@ server <- function(input, output) {
             volume_to_dilute = numeric(),
             stringsAsFactors = FALSE
         ))
-    }) # observeEvent - remove_all_samples
+    })
 
     # Create flextable for output in both pretty output and download
     table_obj <- reactive({
@@ -324,7 +327,7 @@ server <- function(input, output) {
             )
 
         # create flextable
-        ft <- flextable(df_display) %>%
+        flextable(df_display) %>%
             autofit(add_w = 100) %>%
             add_header_lines(
                 values = paste0(
@@ -348,17 +351,12 @@ server <- function(input, output) {
             bold(j = "volume (uL)", bold = TRUE, part = "body") %>%
             color(j = "volume (uL)", color = "red", part = "body") %>%
             fontsize(size = 14, part = "all")
-
-        ft
-    }) # table_obj
+    })
 
     # Render table_obj() as HTML object for pretty output
     output$pretty_output <- renderUI({
         # validate that there is a standard curve.
-        validate(need(
-            coeffs$slope != "" | coeffs$intercept != "",
-            "Please set up the standard curve!"
-        ))
+        validate_stdcurve()
 
         # Render as HTML widget
         tagList(
@@ -373,7 +371,7 @@ server <- function(input, output) {
             paste0("dilution_table_", Sys.Date(), ".docx")
         },
         content = function(file) {
-            # save ggplot to temporary file to insert later
+            # Save ggplot to temporary file to insert later
             tmpfile <- tempfile(fileext = ".png")
             ggsave(
                 tmpfile, 
@@ -383,7 +381,7 @@ server <- function(input, output) {
                 dpi = 150
             )
             
-            # add ggplot as image
+            # Add ggplot as image
             ft <- table_obj() %>%
                 add_footer_lines(
                     values = as_paragraph(
@@ -391,7 +389,7 @@ server <- function(input, output) {
                     )
                 )
             
-            # format for docx.
+            # Format for docx.
             ft <- ft %>%
                 autofit() %>%
                 width(width = dim(.)$widths * 8 / (flextable_dim(.)$widths))
@@ -401,6 +399,7 @@ server <- function(input, output) {
         }
     )
 } # server
+
 
 # Create Shiny object #####
 shinyApp(ui = ui, server = server)
