@@ -67,7 +67,7 @@ ui <- page_navbar(
                     nav_panel(
                         "Input from Excel",
                         textInput("excel_input", "Copy from Excel", ""),
-                        p("Ensure no spaces in virus names."),
+                        p("Input as 'sample_id RLU' separated by spaces/tabs."),
                         p(
                             paste(
                                 "For example:",
@@ -236,57 +236,75 @@ server <- function(input, output) {
         # validate that there is a standard curve
         validate_stdcurve()
 
-        # Example input:
-        # "SARS-CoV-2 2.31E+04\tHIV-1,3.89E+03\nMERS-CoV 4.12E+04"
-        excel_input <- input$excel_input
-        
-        # 1. Normalize all delims (tabs, commas, multiple spaces → single space)
-        excel_input <- gsub("[,\\t]+", " ", excel_input)
-        excel_input <- gsub("\\s+", " ", excel_input)
-        
-        # 2. Insert newline after each numeric value (to start a new row)
-        excel_input <- gsub(
-            "([0-9.Ee+-]+)\\s+(?=[A-Za-z0-9._-])", 
-            "\\1\n", 
-            excel_input, 
-            perl = TRUE
-        )
-        
-        # 3. Replace single space between name and number with a tab
-        excel_input <- gsub(
-            "([A-Za-z0-9._-]+)\\s+([0-9.Ee+-]+)", 
-            "\\1\t\\2", 
-            excel_input
-        )
-        
-        # 4. Trim whitespace
-        excel_input <- trimws(excel_input)
-        
-        # 5. Read into a data frame
-        df_in <- read.table(
-            text = excel_input,
-            header = FALSE, sep = "\t", stringsAsFactors = FALSE
-        )
-        names(df_in) <- c("sample_id", "rlu")
-
-        # Calculate p24 concentration & volumes vectorised
-        p24_conc <- (coeffs$slope * df_in$rlu + coeffs$intercept) * 
+        # Try to parse samples from excel.
+        # Example: "SARS-CoV-2 2.31E+04\tHIV-1,3.89E+03\nMERS-CoV 4.12E+04"
+        tryCatch(
+            expr = {
+                # 1. Normalize all delims 
+                # (tabs, commas, multiple spaces → single space)
+                excel_input <- input$excel_input
+                excel_input <- gsub("[,\\t]+", " ", excel_input)
+                excel_input <- gsub("\\s+", " ", excel_input)
+                
+                # 2. Insert newline after each numeric value
+                excel_input <- gsub(
+                    "([0-9.Ee+-]+)\\s+(?=[A-Za-z0-9._-])", 
+                    "\\1\n", 
+                    excel_input, 
+                    perl = TRUE
+                )
+                
+                # 3. Replace single space between name and number with a tab
+                excel_input <- gsub(
+                    "([A-Za-z0-9._-]+)\\s+([0-9.Ee+-]+)", 
+                    "\\1\t\\2", 
+                    excel_input
+                )
+                
+                # 4. Trim whitespace
+                excel_input <- trimws(excel_input)
+                
+                # 5. Read into a data frame.
+                df_in <- read.table(
+                    text = excel_input,
+                    header = FALSE, sep = "\t", stringsAsFactors = FALSE
+                )
+                names(df_in) <- c("sample_id", "rlu")
+                
+                # Calculate p24 concentration & volumes vectorised
+                p24_conc <- (coeffs$slope * df_in$rlu + coeffs$intercept) * 
                     input$pre_hibit_input
-        vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
-                         p24_conc
-        
-        # Create new rows
-        new_rows <- data.frame(
-            sample_id = df_in$sample_id,
-            rlu = df_in$rlu,
-            p24_concentration_ng_mL = p24_conc,
-            volume_to_dilute = vol_to_dilute,
-            stringsAsFactors = FALSE
+                vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
+                    p24_conc
+                
+                # Create new rows
+                new_rows <- data.frame(
+                    sample_id = df_in$sample_id,
+                    rlu = df_in$rlu,
+                    p24_concentration_ng_mL = p24_conc,
+                    volume_to_dilute = vol_to_dilute,
+                    stringsAsFactors = FALSE
+                )
+                
+                # Bind to current sample_data
+                current <- sample_data()
+                sample_data(rbind(current, new_rows))
+            },
+            error = function(e) {
+                showNotification(
+                    paste(
+                        "Error parsing Excel input.",
+                        "Please ensure the format is 'sample_id RLU'",
+                        "separated by spaces, tabs, or commas."
+                    ),
+                    type = "error",
+                    duration = 8
+                )
+                
+                # return empty
+                return(NULL)
+            }
         )
-
-        # Bind to current sample_data
-        current <- sample_data()
-        sample_data(rbind(current, new_rows))
     })
 
     # remove all samples
@@ -348,13 +366,13 @@ server <- function(input, output) {
                 )
             ) %>%
             align(
-                j = c("p24 (ng/mL)", "volume (uL)"), 
+                j = c("p24\n(ng/mL)", "volume\n(uL)"), 
                 align = "left", 
                 part = "all"
             ) %>%
             bold(bold = TRUE, part = "header") %>%
-            bold(j = "volume (uL)", bold = TRUE, part = "body") %>%
-            color(j = "volume (uL)", color = "red", part = "body") %>%
+            bold(j = "volume\n(uL)", bold = TRUE, part = "body") %>%
+            color(j = "volume\n(uL)", color = "red", part = "body") %>%
             fontsize(size = 14, part = "all")
     })
 
