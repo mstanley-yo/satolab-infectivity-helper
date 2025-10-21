@@ -85,19 +85,19 @@ ui <- page_navbar(
                 card(
                     card_header("Dilution settings"),
                     numericInput(
-                        "pre_hibit_input",
+                        "pre_dilution",
                         "Dilution before HiBiT assay (times)",
                         value = 4,
                         min = 0
                     ),
                     layout_columns(
                         numericInput(
-                            "target_volume_uL", 
+                            "target_vol", 
                             "Target volume (uL)", 
                             value = 300
                         ),
                         numericInput(
-                            "target_p24_ng_mL", 
+                            "target_p24", 
                             "Target p24 (ng/mL)", 
                             value = 400)
                     )
@@ -119,13 +119,13 @@ server <- function(input, output) {
     # Define validate standard curve function
     validate_stdcurve <- function() {
         validate(need(
-            coeffs$slope != "" | coeffs$intercept != "",
+            cfs$slope != "" | cfs$intercept != "",
             "Please set up the standard curve!"
         ))
     }
     
     # Create a reactiveValues list to hold slope and intercept and R-squared
-    coeffs <- reactiveValues(intercept = NULL, slope = NULL, r2 = NULL)
+    cfs <- reactiveValues(intercept = NULL, slope = NULL, r2 = NULL)
 
     # ggplot - draw to reactive object so you can reuse in .docx output
     plot_obj <- reactive({
@@ -149,18 +149,18 @@ server <- function(input, output) {
         model <- lm(Concentration ~ RLU, data = df)
 
         # Extract coefficients and compute R-squared
-        coeffs$intercept <- coef(model)[1]
-        coeffs$slope <- coef(model)[2]
-        coeffs$r2 <- summary(model)$r.squared
+        cfs$intercept <- coef(model)[1]
+        cfs$slope <- coef(model)[2]
+        cfs$r2 <- summary(model)$r.squared
 
         # Format equation string and R-squared
         eq <- paste0(
             "y = ", 
-            round(coeffs$slope, 6), 
+            round(cfs$slope, 6), 
             "x + ", 
-            round(coeffs$intercept, 3)
+            round(cfs$intercept, 3)
         )
-        r2_label <- paste0("R² = ", round(coeffs$r2, 3))
+        r2_label <- paste0("R² = ", round(cfs$r2, 3))
 
         # draw ggplot
         ggplot(df, aes(x = RLU, y = Concentration)) +
@@ -197,51 +197,56 @@ server <- function(input, output) {
         plot_obj()
     }) # renderPlot
 
-    # Create dynamic sample table
-    sample_data <- reactiveVal(data.frame(
+    # Create dynamic sample table sample_data()
+    empty_df <- data.frame(
         sample_id = character(),
         rlu = numeric(),
         p24_concentration_ng_mL = numeric(),
-        volume_to_dilute = numeric(),
-        stringsAsFactors = FALSE
-    ))
-
-    # add sample
-    observeEvent(input$add_sample, {
+        volume_to_dilute = numeric()
+    )
+    
+    sample_data <- reactiveVal(empty_df)
+    
+    # Function to add to sample_data()
+    append_sample_data <- function(data) {
         # validate that there is a standard curve.
         validate_stdcurve()
-
-        # Calculate p24 concentration & volumes
-        p24_conc <- (coeffs$slope * input$rlu_input + coeffs$intercept) * 
-                    input$pre_hibit_input
-        vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
-                         p24_conc
         
-        # Create new row
-        new_row <- data.frame(
-            sample_id = input$sample_id_input,
-            rlu = input$rlu_input,
+        # Calculate p24 concentration & volumes vectorised
+        p24_conc <- (cfs$slope * data$rlu + cfs$intercept) * input$pre_dilution
+        vol_to_dilute <- input$target_vol * input$target_p24 / p24_conc
+        
+        # Create new rows
+        new_rows <- data.frame(
+            sample_id = data$sample_id,
+            rlu = data$rlu,
             p24_concentration_ng_mL = p24_conc,
             volume_to_dilute = vol_to_dilute,
             stringsAsFactors = FALSE
         )
-
+        
         # Bind to current sample_data
         current <- sample_data()
-        sample_data(rbind(current, new_row))
+        sample_data(rbind(current, new_rows))
+    }
+    
+    # Parse manual inputs for append_sample_data
+    observeEvent(input$add_sample, {
+        samples_rlu <- data.frame(
+            sample_id = input$sample_id_input,
+            rlu = input$rlu_input
+        )
+        
+        # append to sample_data() 
+        append_sample_data(samples_rlu)
     })
 
-    # add sample from excel
+    # Parse inputs from excel for append_sample_data
     observeEvent(input$add_sample_excel, {
-        # validate that there is a standard curve
-        validate_stdcurve()
-
         # Try to parse samples from excel.
-        # Example: "SARS-CoV-2 2.31E+04\tHIV-1,3.89E+03\nMERS-CoV 4.12E+04"
         tryCatch(
             expr = {
-                # 1. Normalize all delims 
-                # (tabs, commas, multiple spaces → single space)
+                # 1. Normalize all delims → single space
                 excel_input <- input$excel_input
                 excel_input <- gsub("[,\\t]+", " ", excel_input)
                 excel_input <- gsub("\\s+", " ", excel_input)
@@ -265,30 +270,16 @@ server <- function(input, output) {
                 excel_input <- trimws(excel_input)
                 
                 # 5. Read into a data frame.
-                df_in <- read.table(
+                samples_rlu <- read.table(
                     text = excel_input,
-                    header = FALSE, sep = "\t", stringsAsFactors = FALSE
-                )
-                names(df_in) <- c("sample_id", "rlu")
-                
-                # Calculate p24 concentration & volumes vectorised
-                p24_conc <- (coeffs$slope * df_in$rlu + coeffs$intercept) * 
-                    input$pre_hibit_input
-                vol_to_dilute <- input$target_volume_uL * input$target_p24_ng_mL / 
-                    p24_conc
-                
-                # Create new rows
-                new_rows <- data.frame(
-                    sample_id = df_in$sample_id,
-                    rlu = df_in$rlu,
-                    p24_concentration_ng_mL = p24_conc,
-                    volume_to_dilute = vol_to_dilute,
+                    header = FALSE, 
+                    sep = "\t", 
                     stringsAsFactors = FALSE
                 )
+                names(samples_rlu) <- c("sample_id", "rlu")
                 
-                # Bind to current sample_data
-                current <- sample_data()
-                sample_data(rbind(current, new_rows))
+                # append to sample_data()
+                append_sample_data(samples_rlu)
             },
             error = function(e) {
                 showNotification(
@@ -300,25 +291,45 @@ server <- function(input, output) {
                     type = "error",
                     duration = 8
                 )
-                
-                # return empty
-                return(NULL)
             }
         )
     })
 
-    # remove all samples
+    # Remove all samples
     observeEvent(input$remove_all_samples, {
-        sample_data(data.frame(
-            sample_id = character(),
-            rlu = numeric(),
-            p24_concentration_ng_mL = numeric(),
-            volume_to_dilute = numeric(),
-            stringsAsFactors = FALSE
-        ))
+        sample_data(empty_df)
     })
     
-    # define round volumes function
+    # Observe changes in target_vol, target_p24, and pre_dilution and recalc
+    observe({
+        # Require sample_data()
+        req(sample_data())
+        req(cfs$slope, cfs$intercept)
+        
+        # Trigger when any of these inputs change
+        input$target_vol
+        input$target_p24
+        input$pre_dilution
+        
+        # Get current data
+        data <- sample_data()
+        
+        # Skip if no rows
+        validate(need(nrow(data) > 0, "No samples to recalculate."))
+        
+        # Recalculate p24 concentration and volume
+        p24_conc <- (cfs$slope * data$rlu + cfs$intercept) * input$pre_dilution
+        vol_to_dilute <- input$target_vol * input$target_p24 / p24_conc
+        
+        # Update dataset
+        data$p24_concentration_ng_mL <- p24_conc
+        data$volume_to_dilute <- vol_to_dilute
+        
+        # Save back
+        sample_data(data)
+    })
+    
+    # Define round volumes function
     round_volumes <- function(vol) {
         case_when(
             vol < 20 ~ round(vol, 2), # p20
@@ -326,12 +337,12 @@ server <- function(input, output) {
             .default = round(vol, 1) # p200
         )
     }
-
+    
     # Create flextable for output in both pretty output and download
     table_obj <- reactive({
         # Extract input values
-        total_volume <- input$target_volume_uL
-        target_p24 <- input$target_p24_ng_mL
+        total_volume <- input$target_vol
+        target_p24 <- input$target_p24
 
         # Get current data
         df <- sample_data()
@@ -349,9 +360,16 @@ server <- function(input, output) {
                 `volume\n(uL)` = volume_to_dilute
             )
 
-        # create flextable
-        flextable(df_display) %>%
-            autofit(add_w = 100) %>%
+        # Create flextable
+        set_flextable_defaults(
+            font.family = "Helvetica",
+            font.size = 14,
+            word_wrap = FALSE
+        )
+        
+        df_display %>%
+            flextable() %>%
+            autofit(add_w = 0.5) %>%
             add_header_lines(
                 values = paste0(
                     "Pseudovirus infectivity assay (", 
@@ -360,20 +378,26 @@ server <- function(input, output) {
                 )
             ) %>%
             add_footer_lines(
-                values = paste0(
-                    "Dilute each sample up to ", total_volume, " uL to reach ",
-                    target_p24, " ng/mL p24 concentration."
+                values = as_paragraph(
+                    paste(
+                        "Dilute each sample up to", 
+                        total_volume, 
+                        "uL to reach",
+                        target_p24, 
+                        "ng/mL p24 concentration.",
+                        "\n\n"
+                    ),
+                    paste0(
+                        "Samples were diluted ", 
+                        input$pre_dilution, 
+                        "× prior to HiBiT measurement."
+                    )
                 )
             ) %>%
-            align(
-                j = c("p24\n(ng/mL)", "volume\n(uL)"), 
-                align = "left", 
-                part = "all"
-            ) %>%
+            align(align = "left", part = "all") %>%
             bold(bold = TRUE, part = "header") %>%
             bold(j = "volume\n(uL)", bold = TRUE, part = "body") %>%
-            color(j = "volume\n(uL)", color = "red", part = "body") %>%
-            fontsize(size = 14, part = "all")
+            color(j = "volume\n(uL)", color = "red", part = "body")
     })
 
     # Render table_obj() as HTML object for pretty output
@@ -382,7 +406,8 @@ server <- function(input, output) {
         validate_stdcurve()
 
         # Render as HTML widget
-        tagList(
+        tags$div(
+            style = "margin-left: 0; margin-right: auto; width: fit-content;",
             flextable::htmltools_value(table_obj())
         )
     })
@@ -407,6 +432,7 @@ server <- function(input, output) {
             ft <- table_obj() %>%
                 add_footer_lines(
                     values = as_paragraph(
+                        "\n",
                         as_image(src = tmpfile, width = 7, height = 4) 
                     )
                 )
@@ -414,10 +440,28 @@ server <- function(input, output) {
             # Format for docx.
             ft <- ft %>%
                 autofit() %>%
-                width(width = dim(.)$widths * 8 / (flextable_dim(.)$widths))
+                width(width = dim(.)$widths * 7.5 / (flextable_dim(.)$widths))
 
             # Save as docx
-            flextable::save_as_docx(ft, path = file)
+            sect_prop <- prop_section(
+                page_size = page_size(
+                    orient = "portrait",
+                    width = 8.27, 
+                    height = 11.69
+                ),
+                type = "continuous",
+                page_margins = page_mar(
+                    top = 0.5, 
+                    right = 0.5, 
+                    bottom = 0.5, 
+                    left = 0.5, 
+                    header = 0.3, 
+                    footer = 0.3, 
+                    gutter = 0
+                )
+            )
+            
+            flextable::save_as_docx(ft, path = file, pr_section = sect_prop)
         }
     )
 } # server
