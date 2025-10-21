@@ -67,8 +67,13 @@ ui <- page_navbar(
                     nav_panel(
                         "Input from Excel",
                         textInput("excel_input", "Copy from Excel", ""),
-                        p("Ensure no spaces in virus names"),
-                        p("For example: 'V1\t2.57E+04 V2\t2.92E+04'..."),
+                        p("Ensure no spaces in virus names."),
+                        p(
+                            paste(
+                                "For example:",
+                                "'virus1\t2.57E+04 virus2\t2.92E+04'..."
+                            )
+                        ),
                         actionButton(
                             "add_sample_excel",
                             "Add Sample from Excel",
@@ -101,7 +106,6 @@ ui <- page_navbar(
             card(
                 card_header("Dilution Table"),
                 uiOutput("table_output"),
-                br(),
                 downloadButton("download_docx", "Download table as .docx"),
                 p("Written in R Shiny by Maximilian Stanley Yo."),
                 github_link
@@ -232,8 +236,33 @@ server <- function(input, output) {
         # validate that there is a standard curve
         validate_stdcurve()
 
-        # Parse excel-style input
-        excel_input <- gsub(" ([^ \t]+)\t", "\n\\1\t", input$excel_input)
+        # Example input:
+        # "SARS-CoV-2 2.31E+04\tHIV-1,3.89E+03\nMERS-CoV 4.12E+04"
+        excel_input <- input$excel_input
+        
+        # 1. Normalize all delims (tabs, commas, multiple spaces → single space)
+        excel_input <- gsub("[,\\t]+", " ", excel_input)
+        excel_input <- gsub("\\s+", " ", excel_input)
+        
+        # 2. Insert newline after each numeric value (to start a new row)
+        excel_input <- gsub(
+            "([0-9.Ee+-]+)\\s+(?=[A-Za-z0-9._-])", 
+            "\\1\n", 
+            excel_input, 
+            perl = TRUE
+        )
+        
+        # 3. Replace single space between name and number with a tab
+        excel_input <- gsub(
+            "([A-Za-z0-9._-]+)\\s+([0-9.Ee+-]+)", 
+            "\\1\t\\2", 
+            excel_input
+        )
+        
+        # 4. Trim whitespace
+        excel_input <- trimws(excel_input)
+        
+        # 5. Read into a data frame
         df_in <- read.table(
             text = excel_input,
             header = FALSE, sep = "\t", stringsAsFactors = FALSE
