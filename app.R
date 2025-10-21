@@ -325,10 +325,10 @@ server <- function(input, output) {
                 volume_to_dilute = round_volumes(volume_to_dilute)
             ) %>%
             rename(
-                `Sample ID` = sample_id,
+                `ID` = sample_id,
                 `RLU` = rlu,
-                `p24 (ng/mL)` = p24_concentration_ng_mL,
-                `volume (uL)` = volume_to_dilute
+                `p24\n(ng/mL)` = p24_concentration_ng_mL,
+                `volume\n(uL)` = volume_to_dilute
             )
 
         # create flextable
