@@ -6,6 +6,7 @@ library(tidyr) # for drop_na()
 library(ggplot2) # for ggplot()
 library(ggprism)
 library(flextable)
+library(officer)
 
 github_link <- tags$a(
     shiny::icon("github"), "GitHub",
