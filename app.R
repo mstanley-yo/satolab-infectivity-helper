@@ -1,13 +1,15 @@
 # Load R packages
 library(shiny)
 library(bslib)
-library(dplyr) # for mutate(), rename()
-library(tidyr) # for drop_na()
-library(ggplot2) # for ggplot()
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
 library(ggprism)
 library(flextable)
 library(officer)
 
+##### UI Function #####
 github_link <- tags$a(
     shiny::icon("github"), "GitHub",
     href = "https://github.com/mstanley-yo/satolab-infectivity-helper",
@@ -20,24 +22,31 @@ rm_samples_button <- actionButton(
     icon = icon("trash")
 )
 
-# Define UI #####
 ui <- page_navbar(
     title = "Infectivity calculator",
     theme = bs_theme(bootswatch = "flatly"),
     
-    # Standard curve tab ----
+    # Standard curve tab
     nav_panel(
         "Standard curve",
         layout_columns(
             col_widths = c(4, 8),
-            card(
-                card_header("RLU of serially diluted standard:"),
-                numericInput("std1", "1141.1 ng/mL (stock):", NA, min = 0),
-                numericInput("std2", "570.6 ng/mL:", NA, min = 0),
-                numericInput("std3", "285.3 ng/mL:", NA, min = 0),
-                numericInput("std4", "142.6 ng/mL:", NA, min = 0),
-                numericInput("std5", "71.3 ng/mL:", NA, min = 0),
-                numericInput("std6", "0 ng/mL:", NA, min = 0)
+            navset_card_pill(
+                nav_panel(
+                    "Manual Input",
+                    numericInput("std1", "1141.1 ng/mL (stock):", NA, min = 0),
+                    numericInput("std2", "570.6 ng/mL:", NA, min = 0),
+                    numericInput("std3", "285.3 ng/mL:", NA, min = 0),
+                    numericInput("std4", "142.6 ng/mL:", NA, min = 0),
+                    numericInput("std5", "71.3 ng/mL:", NA, min = 0),
+                    numericInput("std6", "0 ng/mL:", NA, min = 0)
+                ),
+                nav_panel(
+                    "Input From Excel",
+                    textInput("std_excel", "Copy from Excel", ""),
+                    p("Input as 6 values separated by spaces/tabs."),
+                    p("e.g.: '4.10E+06 2.57E+06 ...'")
+                )
             ),
             card(
                 card_header("Standard curve"),
@@ -55,28 +64,19 @@ ui <- page_navbar(
                 col_widths = c(12, 12),
                 navset_card_pill(
                     nav_panel(
-                        "Manual input",
+                        "Manual Input",
                         textInput("sample_id_input", "Sample ID", ""),
                         numericInput("rlu_input", "RLU", NA, min = 0),
-                        actionButton(
-                            "add_sample", 
-                            "Add Sample", 
-                            icon = icon("plus")
-                        ),
+                        actionButton("add", "Add Sample", icon = icon("plus")),
                         rm_samples_button
                     ),
                     nav_panel(
-                        "Input from Excel",
+                        "Input From Excel",
                         textInput("excel_input", "Copy from Excel", ""),
-                        p("Input as 'sample_id RLU' separated by spaces/tabs."),
-                        p(
-                            paste(
-                                "For example:",
-                                "'virus1\t2.57E+04 virus2\t2.92E+04'..."
-                            )
-                        ),
+                        p("Input as 'sample RLU' separated by spaces/tabs."),
+                        p("e.g.: 'virus1\t2.57E+04 virus2\t2.92E+04'..."),
                         actionButton(
-                            "add_sample_excel",
+                            "add_excel",
                             "Add Sample from Excel",
                             icon = icon("file-excel")
                         ),
@@ -131,23 +131,26 @@ server <- function(input, output) {
     # ggplot - draw to reactive object so you can reuse in .docx output
     plot_obj <- reactive({
         # Extract numeric RLU values from inputs
-        rlus <- as.numeric(c(
-            input$std1, input$std2, input$std3,
-            input$std4, input$std5, input$std6
-        ))
-
-        # Known concentrations
-        concentrations <- c(1141.1 / 2^(0:4), 0)
-
+        rlus <- str_split_1(input$std_excel, "\\s+")
+        if (length(rlus) != 6) {
+            rlus <- c(
+                input$std1, input$std2, input$std3,
+                input$std4, input$std5, input$std6
+            )
+        }
+        
         # Build data frame
-        df <- data.frame(
-            RLU = rlus,
-            Concentration = concentrations
-        ) %>%
+        known_concs <- c(1141.1 / 2^(0:4), 0)
+        df <- data.frame(RLU = as.numeric(rlus), conc = known_concs) %>%
             drop_na()
 
+        # validate that there is at least one RLU value entered
+        validate(
+            need(nrow(df) > 0, "Please input luminescence (RLU) values!")
+        )
+        
         # Fit linear model: Concentration as a function of RLU
-        model <- lm(Concentration ~ RLU, data = df)
+        model <- lm(conc ~ RLU, data = df)
 
         # Extract coefficients and compute R-squared
         cfs$intercept <- coef(model)[1]
@@ -164,7 +167,7 @@ server <- function(input, output) {
         r2_label <- paste0("R² = ", round(cfs$r2, 3))
 
         # draw ggplot
-        ggplot(df, aes(x = RLU, y = Concentration)) +
+        ggplot(df, aes(x = RLU, y = conc)) +
             geom_point(size = 3, color = "blue") +
             geom_smooth(
                 method = "lm", 
@@ -183,20 +186,8 @@ server <- function(input, output) {
 
     # render standard curve plot
     output$rlu_plot <- renderPlot({
-        # validate that there is at least one RLU value entered
-        validate(
-            need(
-                any(c(
-                    input$std1, input$std2, input$std3,
-                    input$std4, input$std5, input$std6
-                ) != ""),
-                "Please input luminescence (RLU) values!"
-            )
-        )
-
-        # render the ggplot object defined earlier.
         plot_obj()
-    }) # renderPlot
+    })
 
     # Create dynamic sample table sample_data()
     empty_df <- data.frame(
@@ -232,7 +223,7 @@ server <- function(input, output) {
     }
     
     # Parse manual inputs for append_sample_data
-    observeEvent(input$add_sample, {
+    observeEvent(input$add, {
         samples_rlu <- data.frame(
             sample_id = input$sample_id_input,
             rlu = input$rlu_input
@@ -243,7 +234,7 @@ server <- function(input, output) {
     })
 
     # Parse inputs from excel for append_sample_data
-    observeEvent(input$add_sample_excel, {
+    observeEvent(input$add_excel, {
         # Try to parse samples from excel.
         tryCatch(
             expr = {
