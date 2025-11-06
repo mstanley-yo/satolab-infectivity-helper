@@ -34,12 +34,12 @@ ui <- page_navbar(
             navset_card_pill(
                 nav_panel(
                     "Manual Input",
-                    numericInput("std1", "1141.1 ng/mL (stock):", NA, min = 0),
-                    numericInput("std2", "570.6 ng/mL:", NA, min = 0),
-                    numericInput("std3", "285.3 ng/mL:", NA, min = 0),
-                    numericInput("std4", "142.6 ng/mL:", NA, min = 0),
-                    numericInput("std5", "71.3 ng/mL:", NA, min = 0),
-                    numericInput("std6", "0 ng/mL:", NA, min = 0)
+                    numericInput("s1", "1141.1 ng/mL (stock):", NA, min = 0),
+                    numericInput("s2", "570.6 ng/mL:", NA, min = 0),
+                    numericInput("s3", "285.3 ng/mL:", NA, min = 0),
+                    numericInput("s4", "142.6 ng/mL:", NA, min = 0),
+                    numericInput("s5", "71.3 ng/mL:", NA, min = 0),
+                    numericInput("s6", "0 ng/mL:", NA, min = 0)
                 ),
                 nav_panel(
                     "Input From Excel",
@@ -131,57 +131,60 @@ server <- function(input, output) {
     # ggplot - draw to reactive object so you can reuse in .docx output
     plot_obj <- reactive({
         # Extract numeric RLU values from inputs
-        rlus <- str_split_1(input$std_excel, "\\s+")
+        rlus <- str_split_1(input$std_excel, "\\s+") %>%
+            as.numeric() %>%
+            discard(is.na)
+        
         if (length(rlus) != 6) {
             rlus <- c(
-                input$std1, input$std2, input$std3,
-                input$std4, input$std5, input$std6
-            )
+                input$s1, input$s2, input$s3, input$s4, input$s5, input$s6
+            ) %>%
+                as.numeric()
         }
         
         # Build data frame
         known_concs <- c(1141.1 / 2^(0:4), 0)
-        df <- data.frame(RLU = as.numeric(rlus), conc = known_concs) %>%
+        df <- data.frame(RLU = rlus, conc = known_concs) %>%
             drop_na()
-
-        # validate that there is at least one RLU value entered
-        validate(
-            need(nrow(df) > 0, "Please input luminescence (RLU) values!")
-        )
         
-        # Fit linear model: Concentration as a function of RLU
-        model <- lm(conc ~ RLU, data = df)
-
-        # Extract coefficients and compute R-squared
-        cfs$intercept <- coef(model)[1]
-        cfs$slope <- coef(model)[2]
-        cfs$r2 <- summary(model)$r.squared
-
-        # Format equation string and R-squared
-        eq <- paste0(
-            "y = ", 
-            round(cfs$slope, 6), 
-            "x + ", 
-            round(cfs$intercept, 3)
-        )
-        r2_label <- paste0("R² = ", round(cfs$r2, 3))
-
-        # draw ggplot
-        ggplot(df, aes(x = RLU, y = conc)) +
-            geom_point(size = 3, color = "blue") +
-            geom_smooth(
-                method = "lm", 
-                se = FALSE, 
-                color = "grey", 
-                linetype = "dashed"
-            ) +
-            labs(
-                x = "RLU (Relative Light Units)",
-                y = "p24 concentration (ng/mL)",
-                title = "Standard Curve: RLU vs. Concentration",
-                subtitle = paste(eq, "     ", r2_label)
-            ) +
-            theme_prism()
+        # Try to fit linear model, but destroy cfs if it can't
+        tryCatch({
+            model <- lm(conc ~ RLU, data = df)
+            cfs$intercept <- coef(model)[1]
+            cfs$slope <- coef(model)[2]
+            cfs$r2 <- summary(model)$r.squared
+            
+            # Format equation string and R-squared
+            eq <- paste0(
+                "y = ", round(cfs$slope, 6), 
+                "x + ", round(cfs$intercept, 3)
+            )
+            r2_label <- paste0("R² = ", round(cfs$r2, 3))
+            
+            plot <- ggplot(df, aes(x = RLU, y = conc)) +
+                geom_point(size = 3, color = "blue") +
+                geom_smooth(
+                    method = "lm", 
+                    se = FALSE, 
+                    color = "grey", 
+                    linetype = "dashed"
+                ) +
+                labs(
+                    x = "RLU (Relative Light Units)",
+                    y = "p24 concentration (ng/mL)",
+                    title = "Standard Curve: RLU vs. Concentration",
+                    subtitle = paste(eq, "     ", r2_label)
+                ) +
+                theme_prism()
+        }, error = function(e) {
+            cfs$intercept <- ""
+            cfs$slope <- ""
+            cfs$r2 <- ""
+        })
+        
+        # Draw ggplot only if you can
+        validate(need(nrow(df) > 0, "Please input standard curve RLU values!"))
+        plot
     })
 
     # render standard curve plot
