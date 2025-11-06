@@ -132,8 +132,8 @@ server <- function(input, output) {
     plot_obj <- reactive({
         # Extract numeric RLU values from inputs
         rlus <- str_split_1(input$std_excel, "\\s+") %>%
-            as.numeric() %>%
-            discard(is.na)
+            as.numeric()
+        rlus <- rlus[!is.na(rlus)]
         
         if (length(rlus) != 6) {
             rlus <- c(
